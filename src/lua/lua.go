@@ -58,6 +58,7 @@ func (self *Lua) registerGallon() {
 	self.registerMiddleware()
 	self.registerRoutes()
 	self.registerErrorHandler()
+	self.registerJinja()
 	self.registerLog()
 
 	self.State.LuaContext.SetGlobal("gallon", self.Gallon)
