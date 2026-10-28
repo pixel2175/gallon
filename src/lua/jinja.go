@@ -9,6 +9,10 @@ import (
 )
 
 func (self *Lua) ensureJinja() {
+	if self.State.Jinja == nil {
+		self.State.Jinja = &state.Jinja{}
+	}
+
 	if self.State.Jinja.Loader == nil || self.State.Jinja.Config == nil {
 		jinja.Init(self.State.Jinja)
 	}
