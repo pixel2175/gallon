@@ -56,4 +56,4 @@ gallon.route("/jinja/string", function(req)
     ), 200, {["Content-Type"] = "text/html"}
 end)
 
-gallon.run({host = "localhost", port = 8081, workers = 4, gc = 200})
+gallon.run({host = "localhost", port = 8081, workers = 4, gc = 400})

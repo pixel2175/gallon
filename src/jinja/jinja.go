@@ -59,8 +59,8 @@ func RenderFile(j *state.Jinja, name string, data map[string]any) (result string
 func render(tpl *exec.Template, data map[string]any) (result string, err error) {
 	ctx := exec.NewContext(data)
 
-	v,e := tpl.ExecuteToString(ctx)
-	result = TryV(v,e, func(err *error) {
+	v, e := tpl.ExecuteToString(ctx)
+	result = TryV(v, e, func(err *error) {
 		if syntaxErr, ok := errors.AsType[*parser.SyntaxError](*err); ok {
 			*err = fmt.Errorf(
 				"Jinja syntax error:\n- Line=%d, Column=%d\n- %s",

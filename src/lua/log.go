@@ -6,31 +6,17 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-func (self *Lua) luaLogDie(L *glua.LState) int {
-	msg := L.CheckString(1)
-	log.Die(msg)
+func (self *Lua) logInfo(L *glua.LState) int {
+	log.Info("%s", L.CheckString(1))
 	return 0
 }
 
-func (self *Lua) luaLogWarn(L *glua.LState) int {
-	msg := L.CheckString(1)
-	log.Warn(msg)
+func (self *Lua) logWarn(L *glua.LState) int {
+	log.Warn(L.CheckString(1))
 	return 0
 }
 
-func (self *Lua) luaLogInfo(L *glua.LState) int {
-	msg := L.CheckString(1)
-	log.Info("%s", msg)
+func (self *Lua) logDie(L *glua.LState) int {
+	log.Die(L.CheckString(1))
 	return 0
-}
-
-func (self *Lua) registerLog() {
-	logTable := self.Context.NewTable()
-	self.Context.SetFuncs(logTable, map[string]glua.LGFunction{
-		"info": self.luaLogInfo,
-		"warn": self.luaLogWarn,
-		"die":  self.luaLogDie,
-	})
-
-	self.Gallon.RawSetString("log", logTable)
 }

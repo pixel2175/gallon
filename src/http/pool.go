@@ -1,40 +1,40 @@
 package http
 
 import (
-	"net/http"
-
 	"gallon/src/lua"
 	"gallon/src/state"
+	"net/http"
 
 	glua "github.com/yuin/gopher-lua"
 )
 
 type worker struct {
-	st    *state.State
-	reqMT *glua.LTable
+	server     *state.HttpServer
+	luaContext *glua.LState
 }
 
-func (s *Server) initWorkers(n int) {
+func (s *Server) initWorkers() {
+	n := s.st.HttpServer.Workers
 	s.workers = make(chan *worker, n)
 
 	for range n {
-		st := &state.State{
-			Server: &state.Server{
-				Routes:        map[string]*glua.LFunction{},
-				ErrorHandlers: map[string]*glua.LFunction{},
-			},
-			Args:  s.st.Args,
-			Proto: s.st.Proto,
-		}
-		lua.InitLua(st)
+		st := state.Init()
+		st.Proto = s.st.Proto
+		lua.InitLua(&st)
+
 		s.workers <- &worker{
-			st:    st,
-			reqMT: registerRequestType(st.LuaContext),
+			server:     st.HttpServer,
+			luaContext: st.LuaContext,
 		}
 	}
 }
 
 func (s *Server) acquire(r *http.Request) (*worker, bool) {
+	select {
+	case w := <-s.workers:
+		return w, true
+	default:
+	}
 	select {
 	case w := <-s.workers:
 		return w, true

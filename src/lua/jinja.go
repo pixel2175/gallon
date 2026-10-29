@@ -4,72 +4,63 @@ import (
 	"gallon/src/jinja"
 	"gallon/src/state"
 
-	. "github.com/pixel2175/errs"
 	glua "github.com/yuin/gopher-lua"
 )
 
-func (self *Lua) ensureJinja() {
-	if self.State.Jinja == nil {
-		self.State.Jinja = &state.Jinja{}
+func (self *Lua) jinjaState() *state.Jinja {
+	j := self.State.Jinja
+	if j == nil {
+		j = &state.Jinja{}
+		self.State.Jinja = j
 	}
-
-	if self.State.Jinja.Loader == nil || self.State.Jinja.Config == nil {
-		jinja.Init(self.State.Jinja)
+	if j.Loader == nil || j.Config == nil {
+		jinja.Init(j)
 	}
+	return j
 }
 
-func (self *Lua) luaJinjaRenderTemplate(L *glua.LState) int {
-	self.ensureJinja()
+func (self *Lua) jinjaRender(L *glua.LState) int {
+	j := self.jinjaState()
 
 	name := L.CheckString(1)
-	data := L.OptTable(2, L.NewTable())
+	data := toMap(L.OptTable(2, L.NewTable()))
 
-	result, err := jinja.RenderFile(self.State.Jinja, name, luaTableToMap(data))
-	result = TryV(result, err, func(err *error) {
-		L.RaiseError("jinja.render_template: %v", *err)
-	})
+	result, err := jinja.RenderFile(j, name, data)
+	if err != nil {
+		L.RaiseError("jinja.render_template: %v", err)
+	}
 
 	L.Push(glua.LString(result))
 	return 1
 }
 
-func (self *Lua) luaJinjaRenderTemplateFromString(L *glua.LState) int {
-	self.ensureJinja()
+func (self *Lua) jinjaRenderString(L *glua.LState) int {
+	j := self.jinjaState()
 
 	content := L.CheckString(1)
-	data := L.OptTable(2, L.NewTable())
+	data := toMap(L.OptTable(2, L.NewTable()))
 
-	result, err := jinja.RenderString(self.State.Jinja, content, luaTableToMap(data))
-
-	result = TryV(result, err, func(err *error) {
-		L.RaiseError("jinja.render_template_from_string: %v", *err)
-	})
+	result, err := jinja.RenderString(j, content, data)
+	if err != nil {
+		L.RaiseError("jinja.render_template_from_string: %v", err)
+	}
 
 	L.Push(glua.LString(result))
 	return 1
 }
 
-func (self *Lua) luaJinjaSetTemplateDir(L *glua.LState) int {
+func (self *Lua) jinjaSetTemplateDir(L *glua.LState) int {
 	dir := L.CheckString(1)
 
 	if self.State.Jinja == nil {
 		self.State.Jinja = &state.Jinja{}
 	}
+	j := self.State.Jinja
 
-	self.State.Jinja.TemplatesDir = dir
-	self.State.Jinja.Loader = nil
-	self.State.Jinja.Config = nil
-	jinja.Init(self.State.Jinja)
+	j.TemplatesDir = dir
+	j.Loader = nil
+	j.Config = nil
+	jinja.Init(j)
 
 	return 0
-}
-func (self *Lua) registerJinja() {
-	jinjaTable := self.Context.NewTable()
-	self.Context.SetFuncs(jinjaTable, map[string]glua.LGFunction{
-		"render_template":             self.luaJinjaRenderTemplate,
-		"render_template_from_string": self.luaJinjaRenderTemplateFromString,
-		"set_template_dir":            self.luaJinjaSetTemplateDir,
-	})
-
-	self.Gallon.RawSetString("jinja", jinjaTable)
 }

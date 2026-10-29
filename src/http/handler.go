@@ -1,53 +1,73 @@
 package http
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
-	"os"
-	"strconv"
+
+	"gallon/src/lua"
 
 	. "github.com/pixel2175/errs"
+	glua "github.com/yuin/gopher-lua"
 )
 
-func (s *Server) route(path string) http.HandlerFunc {
-	return func(rw http.ResponseWriter, r *http.Request) {
-		w, ok := s.acquire(r)
-		if !ok {
-			return
-		}
+var errNoHandler = errors.New("route has no handler")
 
-		resp, err := run(w, w.st.Server.Routes[path], r, true)
-		TryV(resp, err, func(err error) error {
-			fmt.Fprintln(os.Stderr, err)
-			resp = errorPage(w, r, http.StatusInternalServerError)
-			return nil
+type Response struct {
+	Body     string
+	Status   int
+	Headers  map[string]string
+	Redirect string
+}
+
+func run(w *worker, fn *glua.LFunction, r *http.Request, hooks bool) (resp Response, err error) {
+	defer Catch(&err)
+
+	if fn == nil {
+		return resp, errNoHandler
+	}
+
+	L, srv := w.luaContext, w.server
+	req, res := lua.RequestToTable(L, r), L.CreateTable(0, 0)
+
+	if hooks && srv.Handlers.BeforeRequest != nil {
+		TryE(invoke(L, srv.Handlers.BeforeRequest, 0, req, res))
+	}
+
+	resp = TryV(handle(L, fn, req, res))
+	if hooks && srv.Handlers.AfterRequest != nil {
+		TryE(invoke(L, srv.Handlers.AfterRequest, 0, req, res))
+	}
+	return resp, nil
+}
+
+func invoke(L *glua.LState, fn *glua.LFunction, nret int, req, res glua.LValue) error {
+	L.Push(fn)
+	L.Push(req)
+	L.Push(res)
+	return L.PCall(2, nret, nil)
+}
+
+func handle(L *glua.LState, fn *glua.LFunction, req, res glua.LValue) (resp Response, err error) {
+	defer Catch(&err)
+
+	top := L.GetTop()
+	defer L.SetTop(top)
+	TryE(invoke(L, fn, 3, req, res))
+	body, status, headers := L.Get(-3), L.Get(-2), L.Get(-1)
+
+	resp = Response{Status: http.StatusOK}
+
+	if body != glua.LNil {
+		resp.Body = body.String()
+	}
+	if n, ok := status.(glua.LNumber); ok {
+		resp.Status = int(n)
+	}
+	if t, ok := headers.(*glua.LTable); ok {
+		resp.Headers = make(map[string]string)
+		t.ForEach(func(k, v glua.LValue) {
+			resp.Headers[k.String()] = v.String()
 		})
-
-		s.release(w)
-		resp.Write(rw)
 	}
-}
-
-func (s *Server) notFound(rw http.ResponseWriter, r *http.Request) {
-	w, ok := s.acquire(r)
-	if !ok {
-		return
-	}
-
-	resp := errorPage(w, r, http.StatusNotFound)
-	s.release(w)
-	resp.Write(rw)
-}
-
-func errorPage(w *worker, r *http.Request, code int) Response {
-	resp := Response{Body: http.StatusText(code)}
-
-	if fn := w.st.Server.ErrorHandlers[strconv.Itoa(code)]; fn != nil {
-		if got, err := run(w, fn, r, false); err == nil {
-			resp = got
-		}
-	}
-
-	resp.Status = code
-	return resp
+	return resp, nil
 }

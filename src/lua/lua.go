@@ -16,6 +16,8 @@ type Lua struct {
 	Gallon  *glua.LTable
 }
 
+type funcs = map[string]glua.LGFunction
+
 func Compile(path string) *glua.FunctionProto {
 	var err error
 	defer Catch(&err, func(err *error) {
@@ -23,43 +25,53 @@ func Compile(path string) *glua.FunctionProto {
 	})
 
 	f := TryV(os.Open(path))
-
 	defer f.Close()
 
 	chunk := TryV(parse.Parse(f, path))
-	p := TryV(glua.Compile(chunk, path))
-	return p
+	return TryV(glua.Compile(chunk, path))
 }
 
 func InitLua(st *state.State) {
-	st.LuaContext = glua.NewState(glua.Options{
+	L := glua.NewState(glua.Options{
 		RegistrySize:    1024,
-		RegistryMaxSize: 1024 * 20,
+		RegistryMaxSize: 20 * 1024,
 		CallStackSize:   64,
 	})
+	st.LuaContext = L
 
-	self := Lua{
-		State:   st,
-		Context: st.LuaContext,
-	}
+	self := &Lua{State: st, Context: L, Gallon: L.NewTable()}
+	self.register()
 
-	self.registerGallon()
-
-	L := st.LuaContext
 	L.Push(L.NewFunctionFromProto(st.Proto))
 	TryE(L.PCall(0, glua.MultRet, nil))
-
 }
 
-func (self *Lua) registerGallon() {
-	self.Gallon = self.State.LuaContext.NewTable()
+func (self *Lua) register() {
+	self.Context.SetFuncs(self.Gallon, funcs{
+		"run":            self.run,
+		"route":          self.route,
+		"before_request": self.beforeRequest,
+		"after_request":  self.afterRequest,
+		"error_handler":  self.errorHandler,
+	})
 
-	self.registerRun()
-	self.registerMiddleware()
-	self.registerRoutes()
-	self.registerErrorHandler()
-	self.registerJinja()
-	self.registerLog()
+	self.sub("jinja", funcs{
+		"render_template":             self.jinjaRender,
+		"render_template_from_string": self.jinjaRenderString,
+		"set_template_dir":            self.jinjaSetTemplateDir,
+	})
 
-	self.State.LuaContext.SetGlobal("gallon", self.Gallon)
+	self.sub("log", funcs{
+		"info": self.logInfo,
+		"warn": self.logWarn,
+		"die":  self.logDie,
+	})
+
+	self.Context.SetGlobal("gallon", self.Gallon)
+}
+
+func (self *Lua) sub(name string, f funcs) {
+	t := self.Context.NewTable()
+	self.Context.SetFuncs(t, f)
+	self.Gallon.RawSetString(name, t)
 }

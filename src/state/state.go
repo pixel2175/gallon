@@ -6,50 +6,55 @@ import (
 	glua "github.com/yuin/gopher-lua"
 )
 
-type CmdRun struct {
-	MainPoint string `arg:"positional" default:"main.lua" help:"main lua file"`
+type Route struct {
+	Func     *glua.LFunction
+	Body     string
+	Status   int
+	Headers  map[string]string
+	Redirect string
 }
 
-type Args struct {
-	Run *CmdRun `arg:"subcommand:run" help:"Run web server"`
+type Handlers struct {
+	ErrorHandlers map[int]*glua.LFunction
+	Routes        map[string]Route
+	BeforeRequest *glua.LFunction
+	AfterRequest  *glua.LFunction
 }
 
-type Server struct {
+type HttpServer struct {
 	IsRunning bool
 	Host      string
 	Port      int
 	Workers   int
-
-	ErrorHandlers map[string]*glua.LFunction
-	Routes        map[string]*glua.LFunction
-	BeforeRequest *glua.LFunction
-	AfterRequest  *glua.LFunction
+	Handlers  Handlers
 }
 type Jinja struct {
-	Loader loaders.Loader
-	Config *config.Config
+	Loader       loaders.Loader
+	Config       *config.Config
 	TemplatesDir string
 }
 
 type State struct {
-	Server     *Server
+	HttpServer *HttpServer
 	Args       *Args
 	Jinja      *Jinja
 
 	LuaContext *glua.LState
 	Proto      *glua.FunctionProto
 
-	GC         int
+	GC int
 }
 
 func Init() State {
 	st := State{
-		Args: &Args{},
+		Args:  &Args{},
 		Jinja: &Jinja{},
-		Server: &Server{
-			IsRunning:     false,
-			Routes:        make(map[string]*glua.LFunction),
-			ErrorHandlers: make(map[string]*glua.LFunction),
+		HttpServer: &HttpServer{
+			IsRunning: false,
+			Handlers: Handlers{
+				Routes:        make(map[string]Route),
+				ErrorHandlers: make(map[int]*glua.LFunction),
+			},
 		},
 	}
 
